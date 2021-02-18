@@ -1,10 +1,11 @@
 from django.db import models
+from django.urls import reverse
 
 # Create your models here.
 class Product(models.Model):
     name        = models.CharField(max_length=100)
     description = models.TextField()
-    image       = models.ImageField(blank=True, null=True, upload_to="product_covers/")
+    cover       = models.ImageField(blank=True, null=True, upload_to="product_covers/")
     slug        = models.SlugField()
 
     content_url = models.URLField(blank=True, null=True)
@@ -14,4 +15,16 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+    def get_absolute_url(self):
+        return reverse('products:product-detail', kwargs={
+            'slug': self.slug
+        })
+
+
+    def price_display(self):
+        return "{0:.2f}".format(self.price / 100)
+
+
+    
 

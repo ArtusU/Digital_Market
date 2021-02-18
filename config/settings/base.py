@@ -82,6 +82,7 @@ LOCAL_APPS = [
     "djgumroad.users.apps.UsersConfig",
     "djgumroad.theme.apps.ThemeConfig",
     "djgumroad.products.apps.ProductsConfig",
+    
     # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps

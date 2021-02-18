@@ -3,7 +3,7 @@ from django.db import models
 from django.db.models import CharField
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
-from products.models import Product
+from djgumroad.products.models import Product
 
 
 class User(AbstractUser):
@@ -34,3 +34,5 @@ class UserLibrary(models.Model):
 
     def __str__(self):
         return self.user.email
+
+    
