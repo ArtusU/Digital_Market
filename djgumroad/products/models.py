@@ -14,6 +14,7 @@ class Product(models.Model):
     content_file = models.FileField(blank=True, null=True)
 
     price       = models.PositiveIntegerField(default=1)
+    active      = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
