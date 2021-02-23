@@ -10,6 +10,8 @@ from djgumroad.products.views import (
     ProductListView, 
     UserProductListView,
     ProductCreateView,
+    CreateCheckoutSessionView,
+    SuccessView
 )
 
 
@@ -20,6 +22,8 @@ urlpatterns = [
     path("products/", UserProductListView.as_view(), name="user-products"),
     path("products/create", ProductCreateView.as_view(), name="product-create"),
     path("p/", include('djgumroad.products.urls', namespace='products')),
+    path("create-checkout-session/<slug>/", CreateCheckoutSessionView.as_view(), name="create-checkout-session"),
+    path("success/", SuccessView.as_view(), name="success"),
     # Django Admin, use {% url 'admin:index' %}
     path(settings.ADMIN_URL, admin.site.urls),
     # User management

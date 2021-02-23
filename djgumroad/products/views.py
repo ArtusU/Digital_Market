@@ -1,10 +1,13 @@
-from django.shortcuts import redirect, render
+import stripe
+from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse
+from django.http import JsonResponse
 from django.views import generic
 from .models import Product
 from .forms import ProductModelForm
 
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 class ProductListView(generic.ListView):
     template_name = 'discover.html'
@@ -15,6 +18,13 @@ class ProductDetailView(generic.DetailView):
     template_name = "products/product.html"
     queryset = Product.objects.all()
     context_object_name = "product"
+
+    def get_context_data(self, **kwargs):
+        context = super(ProductDetailView, self).get_context_data(**kwargs)
+        context.update({
+            "STRIPE_PUBLIC_KEY": settings.STRIPE_PUBLIC_KEY
+        })
+        return context
 
 
 class UserProductListView(LoginRequiredMixin, generic.ListView):
@@ -63,3 +73,39 @@ class ProductDeleteView(LoginRequiredMixin, generic.DeleteView):
 
     def get_success_url(self):
         return reverse('user-products')
+
+
+class CreateCheckoutSessionView(generic.View):
+    def post(self, request, *args, **kwargs):
+        product = Product.objects.get(slug=kwargs["slug"])
+        print(product)
+        domain = "https://domain.com"
+        if settings.DEBUG:
+            domain = "http://127.0.0.0:8000"
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[
+                {
+                    'price_data': {
+                        'currency': 'gbp',
+                        'product_data': {
+                            'name': product.name,
+                        },
+                        'unit_amount': product.price,
+                    },
+                    'quantity': 1,
+                }],
+            mode='payment',
+            success_url=domain + reverse('success'),       #+ '?session_id={CHECKOUT_SESSION_ID}',
+            #success_url='https://localhost:8000/success.html',
+            cancel_url=domain + reverse('discover'),
+            #cancel_url= request.build_absolute_url(reverse('discover'))
+        )
+
+        return JsonResponse({
+            "id": session.id
+        })
+
+
+class SuccessView(generic.TemplateView):
+    template_name = "success.html"
