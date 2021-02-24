@@ -1,13 +1,17 @@
 import stripe
+from stripe.error import SignatureVerificationError
+from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views import generic
 from .models import Product
 from .forms import ProductModelForm
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
+User = get_user_model()
 
 class ProductListView(generic.ListView):
     template_name = 'discover.html'
@@ -77,29 +81,39 @@ class ProductDeleteView(LoginRequiredMixin, generic.DeleteView):
 
 class CreateCheckoutSessionView(generic.View):
     def post(self, request, *args, **kwargs):
-        product = Product.objects.get(slug=kwargs["slug"])
-        print(product)
+        product = Product.objects.get(slug=self.kwargs["slug"])
         domain = "https://domain.com"
         if settings.DEBUG:
-            domain = "http://127.0.0.0:8000"
+            domain = "http://127.0.0.1:8000"
+        customer = None
+        customer_email = None
+        if request.user.is_authenticated:
+            if request.user.stripe_customer_id:
+                customer = request.user.stripe_customer_id
+            else:
+                customer_email = request.user.email
         session = stripe.checkout.Session.create(
+            customer=customer,
+            customer_email=customer_email,
             payment_method_types=['card'],
             line_items=[
                 {
                     'price_data': {
-                        'currency': 'gbp',
+                        'currency': 'usd',
                         'product_data': {
                             'name': product.name,
                         },
                         'unit_amount': product.price,
                     },
                     'quantity': 1,
-                }],
+                }
+            ],
             mode='payment',
-            success_url=domain + reverse('success'),       #+ '?session_id={CHECKOUT_SESSION_ID}',
-            #success_url='https://localhost:8000/success.html',
-            cancel_url=domain + reverse('discover'),
-            #cancel_url= request.build_absolute_url(reverse('discover'))
+            success_url=domain + reverse("success"),
+            cancel_url=domain + reverse("discover"),
+            metadata={
+                "product_id": product.id
+            }
         )
 
         return JsonResponse({
@@ -109,3 +123,51 @@ class CreateCheckoutSessionView(generic.View):
 
 class SuccessView(generic.TemplateView):
     template_name = "success.html"
+
+
+@csrf_exempt
+def stripe_webhook(request, *args, **kwargs):
+    CHECKOUT_SESSION_COMPLETED = "checkout.session.completed"
+    
+    payload = request.body
+    sig_header = request.META["HTTP_STRIPE_SIGNATURE"]
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload,
+            sig_header,
+            settings.STRIPE_WEBHOOK_SECRET
+        )
+
+    except ValueError as e:
+        print(e)
+        return HttpResponse(status=400)
+
+    except SignatureVerificationError as e:
+        print(e)
+        return HttpResponse(status=400)
+
+    if event["type"] == CHECKOUT_SESSION_COMPLETED:
+        product_id = event["data"]["object"]["metadata"]["product_id"]
+        product = Product.objects.get(id=product_id)
+
+        stripe_customer_id = event["data"]["object"]["customer"]
+        try:
+            user = User.objects.get(stripe_customer_id=stripe_customer_id)
+            user.userlibrary.products.add(product)
+        except User.DoesNotExist:
+            # assign the customer_id to the corresponding user
+            stripe_customer_email = event["data"]["object"]["customer_details"]["email"]
+            
+            try:
+                user = User.objects.get(email=stripe_customer_email)
+                user.stripe_customer_id = stripe_customer_id
+                user.save()
+                user.userlibrary.products.add(product)
+            except User.DoesNotExist:
+                # this was an anonymous checkout
+                # TODO: handle anonymous checkout
+                print("User does not exist")
+                pass
+            
+    return HttpResponse()
