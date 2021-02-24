@@ -1,5 +1,6 @@
 import stripe
 from stripe.error import SignatureVerificationError
+from django.core.mail import send_mail
 from django.contrib.auth import authenticate, get_user_model
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
@@ -7,7 +8,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse
 from django.http import JsonResponse, HttpResponse
 from django.views import generic
-from .models import Product
+from .models import Product, PurchasedProduct
 from .forms import ProductModelForm
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -32,7 +33,7 @@ class ProductDetailView(generic.DetailView):
                 has_access = True
         context.update({
             "STRIPE_PUBLIC_KEY": settings.STRIPE_PUBLIC_KEY,
-            "has_access": True
+            "has_access": has_access
         })
         return context
 
@@ -107,7 +108,7 @@ class CreateCheckoutSessionView(generic.View):
                     'price_data': {
                         'currency': 'usd',
                         'product_data': {
-                            'name': product.name,
+                            'name': product.name
                         },
                         'unit_amount': product.price,
                     },
@@ -171,9 +172,17 @@ def stripe_webhook(request, *args, **kwargs):
                 user.save()
                 user.userlibrary.products.add(product)
             except User.DoesNotExist:
-                # this was an anonymous checkout
-                # TODO: handle anonymous checkout
-                print("User does not exist")
-                pass
+                
+                PurchasedProduct.objects.create(
+                    email=stripe_customer_email,
+                    product=product
+                )
+
+                send_mail(
+                    subject="Create an account to access your content",
+                    message="Please signup to access your latest purchase",
+                    recipient_list=[stripe_customer_email],
+                    from_email="test@test.com"
+                )
             
     return HttpResponse()
